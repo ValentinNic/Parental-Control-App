@@ -17,12 +17,14 @@ A simple Android application built with Jetpack Compose that demonstrates Fireba
    ```bash
    git clone https://github.com/yourusername/parental-control-app.git
    cd parental-control-app
-  ```
+    ```
+  
 2. **Open in Android Studio:**
 
 Open the project in Android Studio. The project is configured with Gradle and uses a version catalog for dependency management.
 
-3.** Configure Firebase:**
+
+3. **Configure Firebase:**
 
 Follow the Firebase documentation to add your google-services.json file to the app directory.
 Enable Email/Password authentication in the Firebase Console.
