@@ -4,10 +4,13 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.util.Patterns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -15,6 +18,8 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -25,6 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.myapp.ui.theme.MyAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
+import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.delay
 import org.json.JSONArray
@@ -33,32 +39,58 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
+// Replace with your actual drawable resource name
+import com.example.myapp.R
+
+// ------------------ Data Class ------------------
+
+data class ChildInfo(
+    val username: String,
+    val lastLogin: Long,
+    val sessionDuration: Long? = null,
+    val location: String? = null
+) {
+    val lastLoginTimeFormatted: String
+        get() = SimpleDateFormat("dd MMM yyyy HH:mm:ss", Locale.getDefault()).format(Date(lastLogin))
+}
+
+// ------------------ Main Activity ------------------
+
 class MainActivity : ComponentActivity() {
-    // Initialize FirebaseAuth
+
     private lateinit var firebaseAuth: FirebaseAuth
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize Firebase Auth
         firebaseAuth = Firebase.auth
 
         setContent {
             MyAppTheme {
-                // Set up navigation with screens: main, login, signup, and dashboard.
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "main") {
                     composable("main") { MainScreen(navController) }
                     composable("login") { LoginScreen(navController, firebaseAuth) }
                     composable("signup") { SignupScreen(navController, firebaseAuth) }
-                    // Dashboard now receives a username parameter.
-                    composable("dashboard/{username}") { backStackEntry ->
-                        val username = backStackEntry.arguments?.getString("username") ?: "User"
-                        DashboardScreen(navController, username = username)
+                    composable("parentDashboard/{identifier}") { backStackEntry ->
+                        val parentEmail = backStackEntry.arguments?.getString("identifier") ?: "Parent"
+                        val parentUsername = getUsernameForEmail(applicationContext, parentEmail) ?: parentEmail
+                        val childInfo = getLinkedChildInfo(applicationContext, parentEmail)
+                        ParentDashboardScreen(navController, parentUsername, childInfo)
+                    }
+                    composable("childDashboard/{identifier}") { backStackEntry ->
+                        val childEmail = backStackEntry.arguments?.getString("identifier") ?: "Child"
+                        val childUsername = getUsernameForEmail(applicationContext, childEmail) ?: childEmail
+                        ChildDashboardScreen(navController, childEmail, childUsername)
                     }
                 }
             }
         }
     }
 }
+
+// ------------------ Composables ------------------
 
 @Composable
 fun MainScreen(navController: NavController) {
@@ -70,8 +102,9 @@ fun MainScreen(navController: NavController) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Parental Control App",
-            style = MaterialTheme.typography.headlineMedium
+            "Parental Control App",
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.Black
         )
         Spacer(modifier = Modifier.height(32.dp))
         Row(
@@ -79,7 +112,7 @@ fun MainScreen(navController: NavController) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Login Column: Icon + Text
+            // Login option
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(onClick = { navController.navigate("login") }) {
                     Icon(
@@ -89,9 +122,9 @@ fun MainScreen(navController: NavController) {
                         modifier = Modifier.size(64.dp)
                     )
                 }
-                Text(text = "Login")
+                Text("Login", color = Color.Black)
             }
-            // Signup Column: Icon + Text
+            // Signup option
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(onClick = { navController.navigate("signup") }) {
                     Icon(
@@ -101,7 +134,7 @@ fun MainScreen(navController: NavController) {
                         modifier = Modifier.size(64.dp)
                     )
                 }
-                Text(text = "Signup")
+                Text("Signup", color = Color.Black)
             }
         }
     }
@@ -120,76 +153,65 @@ fun LoginScreen(navController: NavController, firebaseAuth: FirebaseAuth) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "Login",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Text("Login", style = MaterialTheme.typography.headlineMedium, color = Color.Black)
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text("Email", color = Color.Black) },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text("Password", color = Color.Black) },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = {
+                if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                    Toast.makeText(context, "Please enter a valid email", Toast.LENGTH_LONG).show()
+                    return@Button
+                }
+                if (password.length < 7) {
+                    Toast.makeText(context, "Password must be at least 7 characters", Toast.LENGTH_LONG).show()
+                    return@Button
+                }
+                // Try Firebase sign in.
                 firebaseAuth.signInWithEmailAndPassword(email, password)
                     .addOnCompleteListener { task ->
-                        val username = getUsernameForUser(context, email, password) ?: email
+                        val username = getUsernameForEmail(context, email) ?: email
                         if (task.isSuccessful) {
                             Toast.makeText(context, "Login Successful", Toast.LENGTH_LONG).show()
-                            Log.d("LoginScreen", "Login Successful")
-                            // URL-encode the username to safely pass it in the route
-                            val encodedUsername = Uri.encode(username)
-                            navController.navigate("dashboard/$encodedUsername") {
-                                popUpTo("main") { inclusive = true }
+                            // If user is child, update last login.
+                            if (getUserRole(context, email) == "Child") {
+                                updateLastLogin(context, email)
                             }
+                            navigateBasedOnRole(navController, context, email, username)
                         } else {
-                            // Firebase login failed; fallback to JSON file authentication
+                            // Firebase failed; try JSON fallback.
                             if (validateCredentials(context, email, password)) {
-                                Toast.makeText(
-                                    context,
-                                    "Login Successful (JSON fallback)",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                Log.d("LoginScreen", "Login Successful via JSON fallback")
-                                val encodedUsername = Uri.encode(username)
-                                navController.navigate("dashboard/$encodedUsername") {
-                                    popUpTo("main") { inclusive = true }
+                                Toast.makeText(context, "Login Successful (JSON fallback)", Toast.LENGTH_LONG).show()
+                                if (getUserRole(context, email) == "Child") {
+                                    updateLastLogin(context, email)
                                 }
+                                navigateBasedOnRole(navController, context, email, username)
                             } else {
-                                Toast.makeText(
-                                    context,
-                                    "Login Failed: ${task.exception?.message}",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                Log.e(
-                                    "LoginScreen",
-                                    "Login Failed: ${task.exception?.javaClass?.simpleName} - ${task.exception?.message}"
-                                )
+                                Toast.makeText(context, "Login Failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                             }
                         }
                     }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Login")
+            Text("Login", color = Color.Black)
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { navController.popBackStack() },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Back")
+        Button(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) {
+            Text("Back", color = Color.Black)
         }
     }
 }
@@ -200,6 +222,8 @@ fun SignupScreen(navController: NavController, firebaseAuth: FirebaseAuth) {
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var userRole by remember { mutableStateOf("Parent") }
+    var linkedParentEmail by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -208,148 +232,241 @@ fun SignupScreen(navController: NavController, firebaseAuth: FirebaseAuth) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "Signup",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Text("Signup", style = MaterialTheme.typography.headlineMedium, color = Color.Black)
         Spacer(modifier = Modifier.height(16.dp))
-        // New text field for Username
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username") },
+            label = { Text("Username", color = Color.Black) },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text("Email", color = Color.Black) },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text("Password", color = Color.Black) },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
+        Text("Select User Role", style = MaterialTheme.typography.titleMedium, color = Color.Black)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = userRole == "Parent", onClick = { userRole = "Parent" })
+            Text("Parent", color = Color.Black)
+            Spacer(modifier = Modifier.width(16.dp))
+            RadioButton(selected = userRole == "Child", onClick = { userRole = "Child" })
+            Text("Child", color = Color.Black)
+        }
+        if (userRole == "Child") {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = linkedParentEmail,
+                onValueChange = { linkedParentEmail = it },
+                label = { Text("Parent Email", color = Color.Black) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = {
+                if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                    Toast.makeText(context, "Please enter a valid email", Toast.LENGTH_LONG).show()
+                    return@Button
+                }
+                if (password.length < 7) {
+                    Toast.makeText(context, "Password must be at least 7 characters", Toast.LENGTH_LONG).show()
+                    return@Button
+                }
+                if (userRole == "Child" && !Patterns.EMAIL_ADDRESS.matcher(linkedParentEmail).matches()) {
+                    Toast.makeText(context, "Please enter a valid parent email", Toast.LENGTH_LONG).show()
+                    return@Button
+                }
                 firebaseAuth.createUserWithEmailAndPassword(email, password)
                     .addOnCompleteListener { task ->
                         if (task.isSuccessful) {
-                            // Save the user's details (username, email, password) in JSON fallback.
-                            addUser(context, email, password, username)
+                            addUser(
+                                context,
+                                email,
+                                password,
+                                username,
+                                userRole,
+                                if (userRole == "Child") linkedParentEmail else null
+                            )
                             Toast.makeText(context, "Signup Successful", Toast.LENGTH_LONG).show()
                             Log.d("SignupScreen", "Signup Successful")
                         } else {
-                            // Firebase signup failed; fallback to JSON file signup
-                            addUser(context, email, password, username)
-                            Toast.makeText(
+                            addUser(
                                 context,
-                                "Signup Successful (JSON fallback)",
-                                Toast.LENGTH_LONG
-                            ).show()
+                                email,
+                                password,
+                                username,
+                                userRole,
+                                if (userRole == "Child") linkedParentEmail else null
+                            )
+                            Toast.makeText(context, "Signup Successful (JSON fallback)", Toast.LENGTH_LONG).show()
                             Log.d("SignupScreen", "Signup Successful via JSON fallback")
                         }
+                        navigateBasedOnRole(navController, context, email, username)
                     }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Signup")
+            Text("Signup", color = Color.Black)
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { navController.popBackStack() },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Back")
+        Button(onClick = { navController.popBackStack() }, modifier = Modifier.fillMaxWidth()) {
+            Text("Back", color = Color.Black)
         }
     }
 }
 
 @Composable
-fun DashboardScreen(navController: NavController, username: String) {
-    // Record the login time when the DashboardScreen is first composed.
-    val loginTime = remember { System.currentTimeMillis() }
-    var elapsedTime by remember { mutableLongStateOf(0L) }
-
-    // Notification counts (for example purposes; replace with dynamic data as needed)
-    var facebookNotifications by remember { mutableIntStateOf(5) }
-    var instagramNotifications by remember { mutableIntStateOf(3) }
-
-    // Update the elapsed time every second.
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000L)
-            elapsedTime = (System.currentTimeMillis() - loginTime) / 1000
-        }
-    }
-
-    // Format the login time to a readable format.
-    val formattedLoginTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(loginTime))
-
+fun ParentDashboardScreen(navController: NavController, parentUsername: String, childInfo: ChildInfo?) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Welcome, $username",
-            style = MaterialTheme.typography.headlineMedium
+            "Welcome, $parentUsername",
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.Black
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Login Time: $formattedLoginTime")
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Logged in for: $elapsedTime seconds")
+        if (childInfo != null) {
+            Text("Your child, ${childInfo.username}, last logged in at:", color = Color.Black)
+            Text(childInfo.lastLoginTimeFormatted, color = Color.Black)
+            Spacer(modifier = Modifier.height(8.dp))
+            if (childInfo.sessionDuration != null) {
+                Text("Child was logged in for: ${childInfo.sessionDuration} seconds", color = Color.Black)
+            } else {
+                Text("Child is currently logged in or session duration not recorded.", color = Color.Black)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Last known location: ${childInfo.location ?: "Unknown"}", color = Color.Black)
+            Spacer(modifier = Modifier.height(16.dp))
+            // Display a static image (ensure hatfield_map.png is in res/drawable)
+            Image(
+                painter = painterResource(id = R.drawable.hatfield_map),
+                contentDescription = "Hatfield Map",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
+            )
+        } else {
+            Text("No linked child account found.", color = Color.Black)
+        }
         Spacer(modifier = Modifier.height(16.dp))
-
-        // New section for notifications
-        Text(
-            text = "You have $facebookNotifications Facebook notifications",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "You have $instagramNotifications Instagram notifications",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
         Button(
             onClick = {
-                // Navigate back to main screen (simulate logout)
                 navController.navigate("main") {
                     popUpTo("main") { inclusive = true }
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Logout")
+            Text("Logout", color = Color.Black)
         }
     }
 }
 
-// ---------- JSON Fallback Helper Functions ----------
+@Composable
+fun ChildDashboardScreen(navController: NavController, childEmail: String, childUsername: String) {
+    val context = LocalContext.current
+
+    val loginTime = remember { System.currentTimeMillis() }
+    var elapsedTime by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000L)
+            elapsedTime = (System.currentTimeMillis() - loginTime) / 1000
+        }
+    }
+    val formattedLoginTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(loginTime))
+
+    // Update child's location to "Hatfield, UK"
+    LaunchedEffect(childEmail) {
+        updateChildLocation(context, childEmail)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Welcome, $childUsername", style = MaterialTheme.typography.headlineMedium, color = Color.Black)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Login Time: $formattedLoginTime", color = Color.Black)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Logged in for: $elapsedTime seconds", color = Color.Black)
+        Spacer(modifier = Modifier.height(24.dp))
+        // Dummy Facebook Notifications
+        Text("Facebook Notifications", style = MaterialTheme.typography.titleMedium, color = Color.Black)
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text("• You have a new friend request!", color = Color.Black)
+                Text("• Your post received 5 new likes.", color = Color.Black)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        // Dummy Instagram Notifications
+        Text("Instagram Notifications", style = MaterialTheme.typography.titleMedium, color = Color.Black)
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text("• New comment on your photo.", color = Color.Black)
+                Text("• 3 new followers joined.", color = Color.Black)
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = {
+                updateSessionDuration(context, childEmail, elapsedTime)
+                navController.navigate("main") {
+                    popUpTo("main") { inclusive = true }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Logout", color = Color.Black)
+        }
+    }
+}
+
+// ------------------ JSON & Firebase Helper Functions ------------------
 
 private const val JSON_FILE_NAME = "Dummy_Database.json"
 
-// Returns the JSON file; creates one if it doesn't exist.
 fun getJsonFile(context: Context): File {
     val file = File(context.filesDir, JSON_FILE_NAME)
     if (!file.exists()) {
-        // Create an empty JSON array as the initial content.
         file.writeText("[]")
     }
     return file
 }
 
-// Reads and returns a JSONArray of users from the JSON file.
 fun readUsersFromJson(context: Context): JSONArray {
     val file = getJsonFile(context)
     return try {
@@ -360,7 +477,6 @@ fun readUsersFromJson(context: Context): JSONArray {
     }
 }
 
-// Writes the JSONArray of users back to the JSON file.
 fun writeUsersToJson(context: Context, usersArray: JSONArray) {
     val file = getJsonFile(context)
     try {
@@ -370,7 +486,6 @@ fun writeUsersToJson(context: Context, usersArray: JSONArray) {
     }
 }
 
-// Validates credentials by checking if a user with the given email and password exists.
 fun validateCredentials(context: Context, email: String, password: String): Boolean {
     val usersArray = readUsersFromJson(context)
     for (i in 0 until usersArray.length()) {
@@ -382,14 +497,22 @@ fun validateCredentials(context: Context, email: String, password: String): Bool
     return false
 }
 
-// Adds a new user to the JSON file with the provided username, email, and password.
-fun addUser(context: Context, email: String, password: String, username: String) {
+fun emailToKey(email: String): String {
+    return email.replace(".", ",")
+}
+
+fun addUser(
+    context: Context,
+    email: String,
+    password: String,
+    username: String,
+    userRole: String,
+    linkedParent: String? = null
+) {
     val usersArray = readUsersFromJson(context)
-    // Optionally, check if the user already exists.
     for (i in 0 until usersArray.length()) {
         val user = usersArray.getJSONObject(i)
         if (user.getString("email") == email) {
-            // User already exists; handle as needed.
             Toast.makeText(context, "User already exists", Toast.LENGTH_LONG).show()
             return
         }
@@ -398,20 +521,151 @@ fun addUser(context: Context, email: String, password: String, username: String)
         put("username", username)
         put("email", email)
         put("password", password)
+        put("userRole", userRole)
+        if (userRole == "Child" && linkedParent != null) {
+            put("linkedParent", linkedParent)
+        }
+        if (userRole == "Child") {
+            put("lastLogin", System.currentTimeMillis())
+        }
     }
     usersArray.put(newUser)
     writeUsersToJson(context, usersArray)
+
+    val dbRef = Firebase.database.getReference("users")
+    val userMap = mutableMapOf<String, Any?>(
+        "username" to username,
+        "email" to email,
+        "password" to password,
+        "userRole" to userRole
+    )
+    if (userRole == "Child" && linkedParent != null) {
+        userMap["linkedParent"] = linkedParent
+    }
+    if (userRole == "Child") {
+        userMap["lastLogin"] = System.currentTimeMillis()
+    }
+    val key = emailToKey(email)
+    dbRef.child(key).setValue(userMap).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            Log.d("FirebaseDB", "User data saved to Firebase")
+        } else {
+            Log.e("FirebaseDB", "Failed to save user data to Firebase: ${task.exception?.message}")
+        }
+    }
 }
 
-// Retrieves the username for the given email and password from the JSON file.
-// Returns null if no matching user is found.
-fun getUsernameForUser(context: Context, email: String, password: String): String? {
+fun updateLastLogin(context: Context, email: String) {
+    val usersArray = readUsersFromJson(context)
+    val currentTime = System.currentTimeMillis()
+    for (i in 0 until usersArray.length()) {
+        val user = usersArray.getJSONObject(i)
+        if (user.getString("email") == email) {
+            user.put("lastLogin", currentTime)
+            break
+        }
+    }
+    writeUsersToJson(context, usersArray)
+
+    val dbRef = Firebase.database.getReference("users")
+    val key = emailToKey(email)
+    dbRef.child(key).child("lastLogin").setValue(currentTime).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            Log.d("FirebaseDB", "Last login updated in Firebase")
+        } else {
+            Log.e("FirebaseDB", "Failed to update last login in Firebase: ${task.exception?.message}")
+        }
+    }
+}
+
+fun updateSessionDuration(context: Context, email: String, sessionDuration: Long) {
     val usersArray = readUsersFromJson(context)
     for (i in 0 until usersArray.length()) {
         val user = usersArray.getJSONObject(i)
-        if (user.getString("email") == email && user.getString("password") == password) {
+        if (user.getString("email") == email) {
+            user.put("sessionDuration", sessionDuration)
+            break
+        }
+    }
+    writeUsersToJson(context, usersArray)
+
+    val dbRef = Firebase.database.getReference("users")
+    val key = emailToKey(email)
+    dbRef.child(key).child("sessionDuration").setValue(sessionDuration).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            Log.d("FirebaseDB", "Session duration updated in Firebase")
+        } else {
+            Log.e("FirebaseDB", "Failed to update session duration in Firebase: ${task.exception?.message}")
+        }
+    }
+}
+
+fun updateChildLocation(context: Context, email: String) {
+    val fixedLocation = "Hatfield, UK"
+    val usersArray = readUsersFromJson(context)
+    for (i in 0 until usersArray.length()) {
+        val user = usersArray.getJSONObject(i)
+        if (user.getString("email") == email) {
+            user.put("location", fixedLocation)
+            break
+        }
+    }
+    writeUsersToJson(context, usersArray)
+
+    val dbRef = Firebase.database.getReference("users")
+    val key = emailToKey(email)
+    dbRef.child(key).child("location").setValue(fixedLocation).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            Log.d("FirebaseDB", "Child location updated in Firebase")
+        } else {
+            Log.e("FirebaseDB", "Failed to update child location in Firebase: ${task.exception?.message}")
+        }
+    }
+}
+
+fun getUserRole(context: Context, email: String): String? {
+    val usersArray = readUsersFromJson(context)
+    for (i in 0 until usersArray.length()) {
+        val user = usersArray.getJSONObject(i)
+        if (user.getString("email") == email) {
+            return user.getString("userRole")
+        }
+    }
+    return null
+}
+
+fun getUsernameForEmail(context: Context, email: String): String? {
+    val usersArray = readUsersFromJson(context)
+    for (i in 0 until usersArray.length()) {
+        val user = usersArray.getJSONObject(i)
+        if (user.getString("email") == email) {
             return user.optString("username", null)
         }
     }
     return null
+}
+
+fun getLinkedChildInfo(context: Context, parentEmail: String): ChildInfo? {
+    val usersArray = readUsersFromJson(context)
+    for (i in 0 until usersArray.length()) {
+        val user = usersArray.getJSONObject(i)
+        if (user.getString("userRole") == "Child" && user.optString("linkedParent") == parentEmail) {
+            val username = user.getString("username")
+            val lastLogin = user.optLong("lastLogin", 0L)
+            val sessionDuration = if (user.has("sessionDuration")) user.optLong("sessionDuration") else null
+            val location = user.optString("location", null)
+            return ChildInfo(username, lastLogin, sessionDuration, location)
+        }
+    }
+    return null
+}
+
+fun navigateBasedOnRole(navController: NavController, context: Context, email: String, username: String) {
+    val userRole = getUserRole(context, email)
+    Log.d("DebugRole", "Email: $email, Role: $userRole") // Debug log to verify user role.
+    if (userRole == "Parent") {
+        navController.navigate("parentDashboard/${Uri.encode(email)}")
+    } else {
+        navController.navigate("childDashboard/${Uri.encode(email)}")
+    }
 }

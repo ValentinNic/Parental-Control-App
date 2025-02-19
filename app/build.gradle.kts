@@ -56,6 +56,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx:23.2.0")
     implementation ("androidx.navigation:navigation-compose:2.6.0")
     implementation ("androidx.compose.material:material-icons-extended:<version>")
+    implementation ("com.google.maps.android:maps-compose:2.11.2")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
