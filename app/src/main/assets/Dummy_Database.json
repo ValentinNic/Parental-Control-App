@@ -1,0 +1,76 @@
+{
+  "users": {
+    "Child@gmail,com": {
+      "email": "Child@gmail.com",
+      "lastLogin": 1739936878109,
+      "linkedParent": "Parent@gmail.com",
+      "location": "Hatfield, UK",
+      "password": "1234567",
+      "sessionDuration": 2,
+      "userRole": "Child",
+      "username": "Child"
+    },
+    "John@gmail,com": {
+      "email": "John@gmail.com",
+      "password": "1234567",
+      "sessionDuration": 10,
+      "userRole": "Parent",
+      "username": "John"
+    },
+    "Johnson@gmail,com": {
+      "email": "Johnson@gmail.com",
+      "lastLogin": 1739935666275,
+      "linkedParent": "John@gmail.com",
+      "password": "1234567",
+      "sessionDuration": 10,
+      "userRole": "Child",
+      "username": "Johnson"
+    },
+    "Johny@gmail,com": {
+      "email": "Johny@gmail.com",
+      "lastLogin": 1739938733618,
+      "linkedParent": "Parent1@gmail.com",
+      "location": "Hatfield, UK",
+      "password": "1234567",
+      "sessionDuration": 17,
+      "userRole": "Child",
+      "username": "Johny"
+    },
+    "Parent1@gmail,com": {
+      "email": "Parent1@gmail.com",
+      "location": "Hatfield, UK",
+      "password": "1234567",
+      "sessionDuration": 18,
+      "userRole": "Parent",
+      "username": "Parent1"
+    },
+    "Parent@gmail,com": {
+      "email": "Parent@gmail.com",
+      "location": "Hatfield, UK",
+      "password": "1234567",
+      "sessionDuration": 6,
+      "userRole": "Parent",
+      "username": "Parent"
+    },
+    "jr@gmail,com": {
+      "email": "jr@gmail.com",
+      "lastLogin": 1739941731854,
+      "linkedParent": "vali@gmail.com",
+      "location": "Hatfield, UK",
+      "password": "1234567",
+      "sessionDuration": 7,
+      "userRole": "Child",
+      "username": "JR"
+    },
+    "valentin@gmail,com": {
+      "location": "Hatfield, UK",
+      "sessionDuration": 5
+    },
+    "vali@gmail,com": {
+      "email": "vali@gmail.com",
+      "password": "1234567",
+      "userRole": "Parent",
+      "username": "Valentin"
+    }
+  }
+}

@@ -6,13 +6,24 @@ A simple Android application built with Jetpack Compose that demonstrates Fireba
 
 - **Firebase Authentication:**  
   Sign up and log in using Firebase Authentication (Email/Password).
+
 - **JSON Fallback:**  
-  When Firebase is unavailable, the app falls back to a local JSON file for authentication and user data.
+  When Firebase is unavailable, the app falls back to a local JSON file for storing user data and handling authentication.
+
 - **Role-Based Dashboard:**  
-  - **Parent Dashboard** shows the parent’s welcome screen, a static map image for the child’s location, and session details.
-  - **Child Dashboard** displays the child’s session time and dummy notifications.
+  - **Parent Dashboard:**  
+    Displays a welcome message, the linked child's last login time, session duration, and last known location. It also includes a switch to lock/unlock notifications on the child's Facebook and Instagram accounts.
+  - **Child Dashboard:**  
+    Shows the child's login time, a continuously updating session duration, and notifications that reflect the parent's lock status.
+  - **Admin Dashboard:**  
+    Provides an admin login to view, add, edit, and delete user accounts, along with an option to clear all JSON fallback data.
+
 - **Session Tracking:**  
-  Logs and tracks child login times and session durations.
+  Logs and tracks the login times and session durations for child users.
+
+- **Network Connectivity Checks:**  
+  Utilizes network connectivity checks to determine whether to use Firebase services or the local JSON fallback, ensuring functionality even in offline mode.
+
 
 ## Requirements
 
@@ -71,6 +82,9 @@ Tap the Logout button to return to the main screen.
 ### Landing Screen
 ![Landing Screen](Images/LandingScreen.png)
 
+### Login Screen
+![Login Screen](Images/LoginPage.png)
+
 ### Signup (Parent)
 ![Signup Parent](Images/SignupParent.png)
 
@@ -82,6 +96,9 @@ Tap the Logout button to return to the main screen.
 
 ### Child Dashboard
 ![Child Dashboard](Images/ChildDashboard.png)
+
+### Admin Dashboard
+![Admin Dashboard](Images/AdminDashboard.png)
 
 
 
